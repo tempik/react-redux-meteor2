@@ -9,10 +9,11 @@ import invariant from 'invariant'
 
 const defaultMapStateToProps = state => ({}) // eslint-disable-line no-unused-vars
 const defaultMapDispatchToProps = dispatch => ({ dispatch })
-const defaultMergeProps = (stateProps, dispatchProps, parentProps) => ({
+const defaultMergeProps = (stateProps, dispatchProps, parentProps, trackerProps) => ({
   ...parentProps,
   ...stateProps,
-  ...dispatchProps
+  ...dispatchProps,
+  ...trackerProps
 })
 
 function getDisplayName(WrappedComponent) {
@@ -64,8 +65,8 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
       }
     }
 
-    function computeMergedProps(stateProps, dispatchProps, parentProps) {
-      const mergedProps = finalMergeProps(stateProps, dispatchProps, parentProps)
+    function computeMergedProps(stateProps, dispatchProps, parentProps, trackerProps) {
+      const mergedProps = finalMergeProps(stateProps, dispatchProps, parentProps, trackerProps)
       if (process.env.NODE_ENV !== 'production') {
         checkStateShape(mergedProps, 'mergeProps')
       }
@@ -104,14 +105,37 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
           this.finalMapStateToProps(state, props) :
           this.finalMapStateToProps(state)
 
+
+        // это можно в принципе и подальше засунуть.
+        //console.warn('Выполнилось повторно из computeStateProps', stateProps)
+        if(typeof stateProps.mapTracker === 'function') {
+          this.mapTracker = stateProps.mapTracker ;
+          this.attachTracker()
+        }
+
+
         if (process.env.NODE_ENV !== 'production') {
           checkStateShape(stateProps, 'mapStateToProps')
         }
         return stateProps
       }
 
+
+      attachTracker(){
+        Tracker.autorun(() => {
+
+           const newTrackerProps = this.mapTracker(this.store.getState(), this.props)
+           if (!this.trackerProps || !shallowEqual(newTrackerProps, this.trackerProps)) {
+             this.trackerProps = newTrackerProps;
+             this.hasTrackerChanged = true
+             if(!this.nowRendering) this.forceUpdate()
+           }
+         })
+      }
+
       configureFinalMapState(store, props) {
         const mappedState = mapState(store.getState(), props)
+
         const isFactory = typeof mappedState === 'function'
 
         this.finalMapStateToProps = isFactory ? mappedState : mapState
@@ -119,6 +143,13 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
 
         if (isFactory) {
           return this.computeStateProps(store, props)
+        }
+
+        //console.warn('выполнилось в первый раз из configureFinalMapState', mappedState)
+        
+        if(typeof mappedState.mapTracker === 'function') {
+          this.mapTracker = mappedState.mapTracker ;
+          this.attachTracker()
         }
 
         if (process.env.NODE_ENV !== 'production') {
@@ -181,7 +212,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
       }
 
       updateMergedPropsIfNeeded() {
-        const nextMergedProps = computeMergedProps(this.stateProps, this.dispatchProps, this.props)
+        const nextMergedProps = computeMergedProps(this.stateProps, this.dispatchProps, this.props, this.trackerProps)
         if (this.mergedProps && checkMergedEquals && shallowEqual(nextMergedProps, this.mergedProps)) {
           return false
         }
@@ -272,6 +303,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
       }
 
       render() {
+        this.nowRendering = true
         const {
           haveOwnPropsChanged,
           hasStoreStateChanged,
@@ -286,6 +318,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
         this.statePropsPrecalculationError = null
 
         if (statePropsPrecalculationError) {
+          this.nowRendering = false
           throw statePropsPrecalculationError
         }
 
@@ -314,14 +347,19 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
         if (
           haveStatePropsChanged ||
           haveDispatchPropsChanged ||
-          haveOwnPropsChanged
+          haveOwnPropsChanged ||
+          this.hasTrackerChanged
+
         ) {
+          this.hasTrackerChanged = false
+
           haveMergedPropsChanged = this.updateMergedPropsIfNeeded()
         } else {
           haveMergedPropsChanged = false
         }
-
+        
         if (!haveMergedPropsChanged && renderedElement) {
+          this.nowRendering = false
           return renderedElement
         }
 
@@ -335,7 +373,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
             this.mergedProps
           )
         }
-
+        this.nowRendering = false
         return this.renderedElement
       }
     }
