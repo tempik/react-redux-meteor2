@@ -120,9 +120,18 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
         return stateProps
       }
 
+      tryStopTrackerComputation(){
+        // если уже был запущен трекер пытаемся остановить, чтобы не плодить вычисления
+        if(typeof this.trackerComputation != 'undefined'){
+          this.trackerComputation.stop()
+        }
+      }
+
 
       attachTracker(){
-        Tracker.autorun(() => {
+        this.tryStopTrackerComputation()
+
+        this.trackerComputation = Tracker.autorun(() => {
 
            const newTrackerProps = this.mapTracker(this.store.getState(), this.props)
            if (!this.trackerProps || !shallowEqual(newTrackerProps, this.trackerProps)) {
@@ -251,6 +260,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
 
       componentWillUnmount() {
         this.tryUnsubscribe()
+        this.tryStopTrackerComputation()
         this.clearCache()
       }
 
