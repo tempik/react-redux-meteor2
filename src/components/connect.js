@@ -33,7 +33,10 @@ function tryCatch(fn, ctx) {
 // Helps track hot reloading.
 let nextVersion = 0
 
-export default function connect(mapStateToProps, mapDispatchToProps, mergeProps, options = {}) {
+export default function connect(mapTrackerToPropsParam=null, mapStateToProps, mapDispatchToProps, mergeProps, options = {}) {
+  const mapTrackerToProps = mapTrackerToPropsParam;
+
+
   const shouldSubscribe = Boolean(mapStateToProps)
   const mapState = mapStateToProps || defaultMapStateToProps
 
@@ -81,6 +84,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
       constructor(props, context) {
         super(props, context)
         this.version = version
+        this.nowRendering = true
         this.store = props.store || context.store
 
         invariant(this.store,
@@ -108,11 +112,16 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
 
         // это можно в принципе и подальше засунуть.
         //console.warn('Выполнилось повторно из computeStateProps', stateProps)
+        if(mapTrackerToProps !== null){
+          this.attachTracker()
+        }
+
+        /*
         if(typeof stateProps.mapTracker === 'function') {
           this.mapTracker = stateProps.mapTracker ;
           this.attachTracker()
         }
-
+        */
 
         if (process.env.NODE_ENV !== 'production') {
           checkStateShape(stateProps, 'mapStateToProps')
@@ -133,7 +142,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
 
         this.trackerComputation = Tracker.autorun(() => {
 
-           const newTrackerProps = this.mapTracker(this.store.getState(), this.props)
+           const newTrackerProps = mapTrackerToProps(this.store.getState(), this.props)
            if (!this.trackerProps || !shallowEqual(newTrackerProps, this.trackerProps)) {
              this.trackerProps = newTrackerProps;
              this.hasTrackerChanged = true
@@ -154,13 +163,18 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
           return this.computeStateProps(store, props)
         }
 
+
+
         //console.warn('выполнилось в первый раз из configureFinalMapState', mappedState)
-        
+        if(mapTrackerToProps !== null){
+          this.attachTracker()
+        }
+        /*
         if(typeof mappedState.mapTracker === 'function') {
           this.mapTracker = mappedState.mapTracker ;
           this.attachTracker()
         }
-
+        */
         if (process.env.NODE_ENV !== 'production') {
           checkStateShape(mappedState, 'mapStateToProps')
         }
@@ -249,6 +263,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
       }
 
       componentDidMount() {
+        this.nowRendering = false
         this.trySubscribe()
       }
 
@@ -260,6 +275,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
 
       componentWillUnmount() {
         this.tryUnsubscribe()
+        this.nowRendering = true
         this.tryStopTrackerComputation()
         this.clearCache()
       }
